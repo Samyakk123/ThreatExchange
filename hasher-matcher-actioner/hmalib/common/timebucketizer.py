@@ -179,3 +179,30 @@ class TimeBucketizer(t.Generic[T]):
                 )
 
         return content_list
+
+    @staticmethod
+    def squash_content(
+        location: datetime.datetime,
+        type: str,
+        storage_path: str,
+    ):
+        """
+        Merge all records for a given datetime
+        """
+        directory_path = TimeBucketizer._generate_path(storage_path, type, location)
+        if not os.path.isdir(directory_path):
+            return []
+
+        file_list = [
+            os.path.join(directory_path, file)
+            for file in os.listdir(directory_path)
+            if os.path.isfile(os.path.join(directory_path, file))
+        ]
+        with open(
+            os.path.join(directory_path, str(uuid.uuid1())) + ".csv", "w"
+        ) as new_file:
+            for file in file_list:
+                with open(file, "r") as reader:
+                    new_file.write(reader.read())
+
+                os.remove(file)

@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 from dataclasses import dataclass
 import datetime
+import os
 import tempfile
 import unittest
 
@@ -151,4 +152,33 @@ class TestTimeBuckets(unittest.TestCase):
                 fileContent,
                 [],
                 "Destroy method should not have executed as the buffer is empty",
+            )
+
+    @freeze_time("2012-08-13 14:04:00")
+    def test_squash_content(self):
+        with tempfile.TemporaryDirectory() as td:
+            for i in range(5):
+                sample = TimeBucketizer(datetime.timedelta(minutes=1), td, "hasher", i)
+                sample.add_record(SampleCSViableClass())
+                sample.force_flush()
+
+            TimeBucketizer.squash_content(
+                datetime.datetime(2012, 8, 13, 14, 4), "hasher", td
+            )
+
+            content = TimeBucketizer.get_records(
+                datetime.datetime.now(),
+                datetime.datetime.now(),
+                "hasher",
+                td,
+                datetime.timedelta(minutes=1),
+                SampleCSViableClass,
+            )
+
+            to_compare = [SampleCSViableClass()] * 5
+            self.assertEqual(
+                content, to_compare, "Incorrect number of records returned."
+            )
+            self.assertEqual(
+                len(os.listdir(td)), 1, "Only 1 file should remain in the directory."
             )

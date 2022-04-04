@@ -2,10 +2,13 @@
 from dataclasses import dataclass
 import datetime
 import os
+import random
+import string
 import tempfile
 import unittest
 
 from freezegun import freeze_time
+from hmalib.common.models.pipeline import HashRecord
 from hmalib.common.timebucketizer import CSViable, TimeBucketizer
 
 
@@ -22,7 +25,7 @@ class SampleCSViableClass(CSViable):
     def to_csv(self):
         return [self.a, self.b]
 
-    def from_csv(self, value):
+    def from_csv(self):
         return SampleCSViableClass()
 
 
@@ -157,28 +160,31 @@ class TestTimeBuckets(unittest.TestCase):
     @freeze_time("2012-08-13 14:04:00")
     def test_squash_content(self):
         with tempfile.TemporaryDirectory() as td:
-            for i in range(5):
-                sample = TimeBucketizer(datetime.timedelta(minutes=1), td, "hasher", i)
-                sample.add_record(SampleCSViableClass())
-                sample.force_flush()
+            with freeze_time(datetime.datetime.now()) as frozen_datetime:
+                for i in range(5):
+                    for i in range(10):
+                        sample = TimeBucketizer(
+                            datetime.timedelta(minutes=1), td, "hasher", str(i)
+                        )
+                        for i in range(3):
+                            content = "".join(
+                                random.choice(string.ascii_lowercase) for _ in range(10)
+                            )
+                            sample.add_record(HashRecord(content, str(i)))
+                        sample.force_flush()
+                    frozen_datetime.tick(delta=datetime.timedelta(minutes=1))
 
-            TimeBucketizer.squash_content(
-                datetime.datetime(2012, 8, 13, 14, 4), "hasher", td
-            )
+                TimeBucketizer.squash_content(
+                    datetime.datetime.now(), "hasher", td, datetime.timedelta(minutes=1)
+                )
 
-            content = TimeBucketizer.get_records(
-                datetime.datetime.now(),
-                datetime.datetime.now(),
-                "hasher",
-                td,
-                datetime.timedelta(minutes=1),
-                SampleCSViableClass,
-            )
+                records = TimeBucketizer.get_records(
+                    datetime.datetime.now() - datetime.timedelta(minutes=7),
+                    datetime.datetime.now(),
+                    "hasher",
+                    td,
+                    datetime.timedelta(minutes=1),
+                    HashRecord,
+                )
 
-            to_compare = [SampleCSViableClass()] * 5
-            self.assertEqual(
-                content, to_compare, "Incorrect number of records returned."
-            )
-            self.assertEqual(
-                len(os.listdir(td)), 1, "Only 1 file should remain in the directory."
-            )
+                self.assertEqual(len(records), 150)

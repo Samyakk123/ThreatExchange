@@ -4,6 +4,10 @@ import datetime
 import os
 import typing as t
 import uuid
+import random
+import string
+from dataclasses import dataclass, field
+
 
 MAX_BUFFER_SIZE = 3200
 SECONDS_PER_DAY = 86400
@@ -174,9 +178,7 @@ class TimeBucketizer(t.Generic[T]):
 
         for file in file_list:
             with open(file, "r") as my_file:
-                content_list.extend(
-                    list(map(type_class().from_csv, csv.reader(my_file)))
-                )
+                content_list.extend(list(map(type_class.from_csv, csv.reader(my_file))))
 
         return content_list
 
@@ -185,24 +187,85 @@ class TimeBucketizer(t.Generic[T]):
         location: datetime.datetime,
         type: str,
         storage_path: str,
+        bucket_width: datetime.timedelta,
+        date_to: datetime.timedelta = datetime.timedelta(days=1),
     ):
-        """
-        Merge all records for a given datetime
-        """
-        directory_path = TimeBucketizer._generate_path(storage_path, type, location)
-        if not os.path.isdir(directory_path):
-            return []
 
-        file_list = [
-            os.path.join(directory_path, file)
-            for file in os.listdir(directory_path)
-            if os.path.isfile(os.path.join(directory_path, file))
-        ]
-        with open(
-            os.path.join(directory_path, str(uuid.uuid1())) + ".csv", "w"
-        ) as new_file:
-            for file in file_list:
-                with open(file, "r") as reader:
-                    new_file.write(reader.read())
+        if bucket_width > date_to:
+            return
 
-                os.remove(file)
+        until_nearest = TimeBucketizer._calculate_bucket_endpoints(
+            location, bucket_width
+        )[1]
+
+        since_nearest = TimeBucketizer._calculate_bucket_endpoints(
+            until_nearest - date_to, bucket_width
+        )[0]
+
+        while until_nearest > since_nearest:
+
+            directory_path = TimeBucketizer._generate_path(
+                storage_path, type, until_nearest
+            )
+
+            if os.path.isdir(directory_path):
+                file_list = []
+                for file in os.listdir(directory_path):
+                    file_path = os.path.join(directory_path, file)
+                    if file.startswith("squash"):
+                        return
+                    elif os.path.isfile(file_path):
+                        file_list.append(file_path)
+
+                with open(
+                    os.path.join(directory_path, "squash" + str(uuid.uuid1())) + ".csv",
+                    "w",
+                ) as new_file:
+                    for file in file_list:
+                        with open(file, "r") as reader:
+                            new_file.write(reader.read())
+
+                        os.remove(file)
+
+            until_nearest -= bucket_width
+
+
+# @dataclass(eq=True)
+# class HashRecord(CSViable):
+#     """
+#     We are getting these records, with content_hashes and content_ids from the hashing process with intent to build an PDQIndex
+#     """
+
+#     content_hash: str
+#     content_id: str
+
+#     def to_csv(self) -> t.List[t.Union[str, int]]:
+#         return [self.content_hash, self.content_id]
+
+#     @classmethod
+#     def from_csv(cls: t.Type["HashRecord"], value: t.List[str]) -> "HashRecord":
+#         return HashRecord(value[0], value[1])
+
+
+# for i in range(10):
+#     sample = TimeBucketizer(
+#         datetime.timedelta(minutes=1), "/tmp/makethisdirectory/", "hasher", str(i)
+#     )
+
+#     for i in range(random.randint(1, 5)):
+#         content = "".join(random.choice(string.ascii_lowercase) for _ in range(10))
+#         sample.add_record(HashRecord(content, str(i)))
+#     sample.force_flush()
+#     def squash_content2(
+#         location: datetime.datetime,
+#         type: str,
+#         storage_path: str,
+#         bucket_width: datetime.timedelta,
+#         date_to: datetime.timedelta = datetime.timedelta(day=1),
+
+# TimeBucketizer.squash_content(
+#     datetime.datetime.now(),
+#     "hasher",
+#     "/tmp/makethisdirectory/",
+#     datetime.timedelta(minutes=1),
+# )

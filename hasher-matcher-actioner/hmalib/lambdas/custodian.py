@@ -13,7 +13,7 @@ BUCKET_WIDTH = datetime.timedelta(minutes=10)
 
 def lambda_handler(event, context):
     """
-    explain here.
+    Squash the records of multiple timebucketizers into a single file
     """
 
     TimeBucketizer.squash_content(

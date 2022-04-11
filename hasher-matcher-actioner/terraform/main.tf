@@ -110,7 +110,7 @@ module "indexer" {
 
 }
 
-module "counters" {
+module "streamLCCWriter" {
   # DynamoDB does not necessarily [1] send the table name to the stream processor.
   # So instead of relying on it, we configure multiple lambdas using the same
   # underlying code. Since there is a lot to configure per lambda, we replicate
@@ -120,22 +120,20 @@ module "counters" {
 
   for_each = {
     HMADataStore = module.datastore.primary_datastore.stream_arn
-    HMABanks     = module.datastore.banks_datastore.stream_arn
   }
 
-  source          = "./counters"
+  source          = "./streamLCCWriter"
   prefix          = var.prefix
   additional_tags = merge(var.additional_tags, local.common_tags)
 
   lambda_docker_info = {
     uri = var.hma_lambda_docker_uri
     commands = {
-      ddb_stream_counter = "hmalib.lambdas.ddb_stream_counter.lambda_handler"
+      streamLCCWriter = "hmalib.lambdas.streamLCCWriter.lambda_handler"
     }
   }
-
-  source_stream_arn = each.value
-  source_table_type = each.key
+  # 
+  source_stream_arn = module.datastore.primary_datastore.stream_arn
 
   counts_datastore = {
     name = module.datastore.counts_datastore.name
@@ -618,6 +616,41 @@ module "submit_events" {
   deadletterqueue_message_retention_seconds = var.deadletterqueue_message_retention_seconds
 }
 
+module "streamLCCWriter" {
+  # DynamoDB does not necessarily [1] send the table name to the stream processor.
+  # So instead of relying on it, we configure multiple lambdas using the same
+  # underlying code. Since there is a lot to configure per lambda, we replicate
+  # the module instead of individual resources inside the module.
+
+  # 1: https://stackoverflow.com/questions/35278881/how-to-get-the-table-name-in-aws-dynamodb-trigger-function
+
+  for_each = {
+    HMADataStore = module.datastore.primary_datastore.stream_arn
+    HMABanks     = module.datastore.banks_datastore.stream_arn
+  }
+
+  source          = "./streamLCCWriter"
+  prefix          = var.prefix
+  additional_tags = merge(var.additional_tags, local.common_tags)
+
+  lambda_docker_info = {
+    uri = var.hma_lambda_docker_uri
+    commands = {
+      streamLCCWriter = "hmalib.lambdas.streamLCCWriter.lambda_handler"
+    }
+  }
+
+  source_stream_arn = each.value
+  source_table_type = each.key
+
+  counts_datastore = {
+    name = module.datastore.counts_datastore.name
+    arn  = module.datastore.counts_datastore.arn
+  }
+
+  log_retention_in_days = var.log_retention_in_days
+  measure_performance   = var.measure_performance
+}
 
 
 ### Basic Dashboard ###
